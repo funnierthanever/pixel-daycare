@@ -1,0 +1,10 @@
+{
+  "name": "Pixel Daycare",
+  "short_name": "Daycare",
+  "start_url": "./",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#1c2a20",
+  "theme_color": "#2a6438",
+  "icons": [{ "src": "icon.png", "sizes": "180x180", "type": "image/png" }]
+}

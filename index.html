@@ -1,0 +1,290 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Daycare">
+<meta name="theme-color" content="#2a6438">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon.png">
+<link rel="icon" href="icon.png">
+<title>Pixel Daycare</title>
+<style>
+  :root { --ink: #2a2a3a; --paper: #fffaf0; --accent: #3f9a4c; --muted: #7a7466; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #1c2a20; color: var(--ink);
+    font: 15px/1.4 ui-rounded, -apple-system, system-ui, sans-serif; -webkit-user-select: none; user-select: none;
+    -webkit-touch-callout: none; touch-action: manipulation; }
+  canvas { display: block; image-rendering: pixelated; image-rendering: crisp-edges; touch-action: none; }
+  #clock { position: fixed; top: max(10px, env(safe-area-inset-top)); left: 14px; padding: 4px 10px; border-radius: 10px;
+    background: rgba(20, 24, 30, .35); color: #fff; font-size: 13px; letter-spacing: .02em; transition: opacity .8s; pointer-events: none; }
+  #open { position: fixed; right: 14px; bottom: max(14px, env(safe-area-inset-bottom)); width: 44px; height: 44px; border-radius: 50%;
+    border: 0; background: rgba(20, 24, 30, .45); color: #fff; font-size: 22px; transition: opacity .8s; }
+  #build { position: fixed; right: 66px; bottom: max(14px, env(safe-area-inset-bottom)); width: 44px; height: 44px; border-radius: 50%;
+    border: 0; background: rgba(20, 24, 30, .45); color: #fff; font-size: 20px; transition: opacity .8s; }
+  body.idle #clock { opacity: .35; }
+  body.idle #open, body.idle #build, body.idle #pcBtn { opacity: 0; }
+  body.idle #boxbar { opacity: .35; }
+  body.idle #boxbar button { opacity: 0; }
+
+  /* PC box header */
+  #pcBtn { position: fixed; right: 118px; bottom: max(14px, env(safe-area-inset-bottom)); width: 44px; height: 44px; border-radius: 50%;
+    border: 0; background: rgba(20, 24, 30, .45); color: #fff; font-size: 22px; transition: opacity .8s; }
+  #boxbar { position: fixed; top: max(8px, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); z-index: 4; display: flex; align-items: center; gap: 4px;
+    padding: 3px 4px; border: 3px solid var(--ink); border-radius: 12px; box-shadow: 0 3px 0 rgba(0,0,0,.3); transition: opacity .8s; }
+  #boxbar button { width: 34px; height: 34px; border: 0; background: rgba(255,255,255,.25); color: #fff; border-radius: 8px; font-size: 15px;
+    text-shadow: 0 1px 0 rgba(0,0,0,.5); transition: opacity .8s; }
+  #boxbar button:disabled { visibility: hidden; }
+  .boxlabel { min-width: 140px; text-align: center; color: #fff; line-height: 1.05; text-shadow: 1px 0 0 #2a2a3a, -1px 0 0 #2a2a3a, 0 1px 0 #2a2a3a, 0 -1px 0 #2a2a3a, 0 2px 0 #2a2a3a; }
+  .boxlabel small { display: block; font-size: 9px; letter-spacing: .14em; opacity: .95; }
+  .boxlabel b { font-size: 17px; letter-spacing: .04em; }
+  body.building #boxbar, body.building #pcBtn { display: none; }
+  canvas.snap { position: fixed; left: 0; top: 0; z-index: 1; pointer-events: none; transition: transform .35s ease-in; }
+  #scene { position: relative; z-index: 0; }
+
+  /* the PC screen */
+  #pc { position: fixed; inset: 0; z-index: 12; display: none; overflow: auto; padding: 16px;
+    background-color: #24305a;
+    background-image: repeating-linear-gradient(0deg, transparent 0 23px, rgba(255,255,255,.06) 23px 24px),
+                      repeating-linear-gradient(90deg, transparent 0 23px, rgba(255,255,255,.06) 23px 24px); -webkit-user-select: none; user-select: none; }
+  #pc.show { display: block; }
+  .pcframe { max-width: 1100px; margin: 0 auto; }
+  .pctop { display: flex; justify-content: space-between; align-items: center; gap: 12px; color: #fff; margin-bottom: 12px; }
+  .pctop b { font-size: 22px; letter-spacing: .04em; display: block; }
+  .pctop small { opacity: .8; }
+  .pcgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 14px; }
+  .boxcard { background: var(--paper); border: 3px solid var(--ink); border-radius: 14px; overflow: hidden; box-shadow: 0 4px 0 rgba(0,0,0,.35); }
+  .boxcard.current { outline: 3px solid #ffe08a; outline-offset: 2px; }
+  .boxcard.target { outline: 3px dashed #fff; outline-offset: 3px; transform: scale(1.02); }
+  .boxcard.full-warn { outline: 3px solid #e0604a; }
+  .boxhead { display: flex; align-items: center; gap: 6px; padding: 6px 8px; color: #fff; border-bottom: 3px solid var(--ink);
+    text-shadow: 1px 0 0 #2a2a3a, -1px 0 0 #2a2a3a, 0 1px 0 #2a2a3a, 0 -1px 0 #2a2a3a; }
+  .boxhead .boxno { font-size: 10px; letter-spacing: .12em; }
+  .boxhead .bname { flex: 1; font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .boxhead .mini { background: rgba(255,255,255,.85); text-shadow: none; }
+  .thumbwrap { cursor: pointer; line-height: 0; border-bottom: 3px solid var(--ink); }
+  .thumbwrap canvas { width: 100%; image-rendering: pixelated; }
+  .slots { display: grid; grid-template-columns: repeat(8, 1fr); gap: 3px; padding: 6px; background: #e8e0cc; }
+  .hubcard { grid-column: span 2; }
+  #pc.readonly .rename, #pc.readonly .del, #pc.readonly .biome { display: none; }
+  #pc.readonly .slot.full { cursor: default; }
+  .hubcard .slots { grid-template-columns: repeat(15, 1fr); }
+  .hubcard .thumbwrap canvas { max-height: 220px; object-fit: cover; }
+  .slot { aspect-ratio: 1; border-radius: 6px; background: rgba(255,255,255,.55); display: flex; align-items: center; justify-content: center; font-size: 12px; color: var(--muted); }
+  .slot.full { background: #fff; box-shadow: inset 0 0 0 1px #d8d0c0; touch-action: none; cursor: grab; }
+  .slot img:not([src]) { visibility: hidden; }
+  .slot img, img.ghost { width: 90%; height: 90%; object-fit: contain; image-rendering: pixelated; pointer-events: none; }
+  img.ghost { position: fixed; z-index: 20; width: 56px; height: 56px; transform: translate(-50%, -60%); filter: drop-shadow(0 4px 2px rgba(0,0,0,.4)); }
+  .boxfoot { display: flex; justify-content: space-between; align-items: center; padding: 4px 8px 8px; font-size: 13px; color: var(--muted); }
+  .boxfoot select { font: inherit; font-size: 13px; border: 2px solid var(--ink); border-radius: 8px; padding: 2px 6px; background: #fff; }
+  .newbox { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 18px; border-style: dashed; background: rgba(255,250,240,.85); }
+  .newbox .biomes { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; width: 100%; }
+  .newbox .biomes button { color: #fff; font-weight: 600; padding: 10px; text-shadow: 0 1px 0 rgba(0,0,0,.5); }
+
+  /* build mode */
+  #buildbar, #buildhint, #selbar, #buildcorner { display: none; }
+  canvas { transition: transform .25s; }
+  body.building #buildcorner { display: flex; gap: 6px; position: fixed; z-index: 6; top: max(10px, env(safe-area-inset-top)); right: 12px; }
+  .pill { font-size: 13px; padding: 5px 11px; border-radius: 12px; border: 2px solid var(--ink); background: var(--paper); }
+  body.building #open, body.building #build, body.building #card { display: none; }
+  body.building #buildbar { display: flex; position: fixed; left: 0; right: 0; bottom: 0; z-index: 6; gap: 10px; align-items: flex-end;
+    padding: 8px 10px max(8px, env(safe-area-inset-bottom)); overflow-x: auto; background: rgba(255, 250, 240, .96); border-top: 3px solid var(--ink);
+    -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+  #buildbar::-webkit-scrollbar { display: none; }
+  .bgroup { display: flex; gap: 2px; position: relative; padding-top: 14px; flex: none; }
+  .bgroup + .bgroup { padding-left: 10px; border-left: 2px dashed #d8d0c0; }
+  .bgroup::before { content: attr(data-label); position: absolute; top: 0; left: 10px; font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+  .bgroup:first-child::before { left: 0; }
+  .tool { width: 50px; height: 58px; padding: 3px 2px 2px; border: 2px solid transparent; border-radius: 10px; background: transparent;
+    display: flex; flex-direction: column; align-items: center; justify-content: space-between; font-size: 22px; line-height: 1; color: var(--ink); }
+  .tool img { width: 34px; height: 34px; image-rendering: pixelated; }
+  .tool span { font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 50px; }
+  .tool .ico { font-style: normal; font-size: 24px; height: 34px; display: flex; align-items: center; }
+  .tool.on { border-color: var(--ink); background: #ffe08a; }
+  .tool.done { background: var(--accent); color: #fff; border-color: var(--ink); font-size: 26px; }
+  .tool.dim { opacity: .35; }
+  .swatch { display: block; width: 28px; height: 28px; margin: 3px 0; border: 3px solid; border-radius: 5px; }
+  .dot { display: block; border-radius: 50%; background: var(--ink); margin: auto; }
+  .dot.s0 { width: 8px; height: 8px; } .dot.s1 { width: 16px; height: 16px; } .dot.s2 { width: 26px; height: 26px; }
+  body.building #buildhint { display: block; position: fixed; top: max(10px, env(safe-area-inset-top)); left: 150px; z-index: 6;
+    max-width: calc(100vw - 590px); padding: 6px 14px; border-radius: 12px; background: rgba(20, 24, 30, .7); color: #fff; font-size: 13px; text-align: center; pointer-events: none; }
+  #buildhint.warn { background: rgba(160, 64, 42, .9); }
+  #selbar.show { display: flex; position: fixed; z-index: 7; gap: 6px; align-items: center; padding: 5px 8px; border-radius: 12px;
+    background: var(--paper); border: 3px solid var(--ink); box-shadow: 0 3px 0 rgba(0,0,0,.25); font-size: 13px; white-space: nowrap; }
+  #selbar .mini { min-width: 30px; height: 30px; font-size: 16px; padding: 0 8px; }
+  #selbar .danger { color: #a0402a; font-size: 13px; }
+  #card { position: fixed; z-index: 5; min-width: 150px; max-width: 260px; padding: 8px 12px; border-radius: 12px; background: var(--paper);
+    border: 3px solid var(--ink); box-shadow: 0 3px 0 rgba(0,0,0,.25); font-size: 14px; opacity: 0; transform: translateY(4px);
+    transition: opacity .2s, transform .2s; pointer-events: none; }
+  #card.show { opacity: 1; transform: none; }
+  #card small { color: var(--muted); }
+  .shiny { color: #e8a800; }
+  #panel { position: fixed; inset: 0; z-index: 10; display: none; background: rgba(10, 16, 12, .55); padding: 16px; overflow: auto;
+    -webkit-user-select: text; user-select: text; }
+  #panel.show { display: block; }
+  .sheet { max-width: 560px; margin: 0 auto; background: var(--paper); border: 3px solid var(--ink); border-radius: 16px; padding: 16px 18px 18px; }
+  .sheet h2 { margin: 0 0 4px; font-size: 20px; }
+  .sheet h3 { margin: 18px 0 6px; font-size: 15px; text-transform: uppercase; letter-spacing: .06em; color: var(--accent); }
+  .sheet p { margin: 6px 0; }
+  .top { display: flex; justify-content: space-between; align-items: center; }
+  button, .filebtn { font: inherit; border: 2px solid var(--ink); background: #fff; border-radius: 10px; padding: 6px 12px; color: var(--ink); }
+  button.primary, .filebtn { background: var(--accent); color: #fff; }
+  .filebtn { display: inline-block; cursor: pointer; }
+  .filebtn input { display: none; }
+  #roster { list-style: none; margin: 0; padding: 0; }
+  #roster li { display: flex; align-items: center; gap: 6px; padding: 6px 0; border-bottom: 1px dashed #d8d0c0; }
+  #roster li span { flex: 1; }
+  #roster small, .hint { color: var(--muted); font-size: 13px; }
+  .mini { padding: 2px 8px; border-width: 1px; }
+  .mini.on { background: #ffe08a; }
+  form { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  input[type=text] { font: inherit; padding: 6px 8px; border: 2px solid var(--ink); border-radius: 8px; min-width: 0; flex: 1 1 140px; }
+  .candidate { border: 2px solid #d8d0c0; border-radius: 10px; padding: 6px 10px; margin: 6px 0; }
+  .warn { color: #a0402a; } .ok { color: var(--accent); }
+  .disabled { opacity: .45; }
+  input[type=range] { width: 100%; }
+  .native .webonly { display: none; }
+  .visitonly, #visitbar { display: none; }
+  .visiting .visitonly { display: initial; }
+  .visiting .homeonly, .visiting #build { display: none; }
+  .visiting #visitbar { display: flex; position: fixed; z-index: 4; left: 50%; transform: translateX(-50%); bottom: max(14px, env(safe-area-inset-bottom));
+    align-items: center; gap: 10px; padding: 6px 8px 6px 14px; border-radius: 14px; background: rgba(20, 24, 30, .6); color: #fff; font-size: 14px; transition: opacity .8s; }
+  .visiting #visitbar button { font-size: 13px; padding: 4px 10px; }
+  body.idle #visitbar { opacity: .35; }
+  body.building #visitbar { display: none; }
+  #shareResult textarea { width: 100%; height: 64px; font: 12px ui-monospace, monospace; margin-top: 8px; border: 2px solid var(--ink); border-radius: 8px; padding: 6px; }
+  .looks { display: flex; gap: 8px; flex-wrap: wrap; }
+  .look { width: 54px; height: 54px; padding: 4px; background: #fff; }
+  .look.on { background: #ffe08a; }
+  .look canvas { width: 40px; height: 40px; image-rendering: pixelated; }
+  .row { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+  /* bringing Pokémon in: the picker, the welcome card, the drop target, the toast */
+  #ingest { position: fixed; inset: 0; z-index: 14; display: none; overflow: auto; padding: 16px;
+    background-color: #24305a;
+    background-image: repeating-linear-gradient(0deg, transparent 0 23px, rgba(255,255,255,.06) 23px 24px),
+                      repeating-linear-gradient(90deg, transparent 0 23px, rgba(255,255,255,.06) 23px 24px); }
+  #ingest.show { display: block; }
+  #ingest .pctop small { display: block; }
+  #ingest .pctop .close { min-width: 40px; height: 40px; font-size: 18px; background: rgba(255,255,255,.9); }
+  .ingbar { position: sticky; top: -16px; z-index: 2; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; margin: 0 -4px 14px; padding: 10px 12px;
+    background: var(--paper); border: 3px solid var(--ink); border-radius: 14px; box-shadow: 0 4px 0 rgba(0,0,0,.35); }
+  .ingcount { flex: 1 1 160px; line-height: 1.15; }
+  .ingcount b { display: block; font-size: 18px; }
+  .ingcount small { color: var(--muted); }
+  .ingcount.flash b { animation: ingflash .6s 2; }
+  @keyframes ingflash { 50% { color: #c0402a; } }
+  .ingtools { display: flex; gap: 6px; }
+  .ingtools .mini { padding: 5px 10px; border-width: 2px; }
+  .ingmode { display: flex; flex-direction: column; gap: 2px; font-size: 14px; }
+  .ingmode small { color: var(--muted); }
+  .ingbar .go { font-size: 17px; padding: 9px 18px; }
+  .ingbar .go:disabled { opacity: .5; }
+  .ingpick, .ingnote { color: #fff; margin: 0 0 12px; }
+  .ingpick select { font: inherit; border-radius: 8px; padding: 3px 6px; max-width: 100%; }
+  .inggrid { align-items: start; }
+  .inggrid .boxhead { background: #4a5a9a; }
+  .inggrid .party .boxhead { background: #c0503a; }
+  .inggrid .boxhead .bcount { font-size: 12px; opacity: .9; }
+  .inggrid .slots { grid-template-columns: repeat(6, 1fr); }
+  .inggrid .boxcard.dim { opacity: .75; }
+  .slot.pick { position: relative; padding: 0; border: 0; cursor: pointer; opacity: .35; filter: grayscale(.7); transition: opacity .12s, transform .12s; }
+  .slot.pick.on { opacity: 1; filter: none; box-shadow: inset 0 0 0 2px var(--accent); background: #f1fbe8; }
+  .slot.pick:active { transform: scale(.94); }
+  .slot.pick i { position: absolute; right: 2px; bottom: 1px; font-size: 9px; font-style: normal; color: var(--muted); }
+  .slot.pick em { position: absolute; left: 2px; top: 0; font-size: 10px; font-style: normal; color: #e8a800; }
+  .slot.unknown { opacity: .4; }
+  .ingerror { margin-top: 10vh; }
+  @media (max-width: 600px) {
+    .ingbar { gap: 6px 10px; padding: 8px 10px; }
+    .ingcount { flex: 1 1 auto; } .ingcount b { font-size: 16px; } .ingcount small { display: none; }
+    .ingbar .go { order: 1; font-size: 15px; padding: 7px 12px; }
+    .ingtools { order: 2; }
+    .ingmode { order: 3; width: 100%; flex-direction: row; flex-wrap: wrap; gap: 2px 12px; font-size: 13px; }
+  }
+  #welcome { position: fixed; inset: 0; z-index: 11; display: none; align-items: center; justify-content: center; padding: 16px; background: rgba(10, 16, 12, .35); }
+  #welcome.show { display: flex; }
+  #welcome .sheet { max-width: 470px; text-align: center; box-shadow: 0 6px 0 rgba(0,0,0,.35); }
+  #welcome h2 { font-size: 24px; margin-bottom: 8px; }
+  .filebtn.big { font-size: 18px; padding: 10px 22px; margin: 6px 0; }
+  #welcome .later { border-width: 0; background: none; color: var(--muted); text-decoration: underline; }
+  #dropzone { position: fixed; inset: 10px; z-index: 30; display: none; align-items: center; justify-content: center; pointer-events: none;
+    border: 4px dashed #fff; border-radius: 20px; background: rgba(20, 40, 28, .7); color: #fff; font-size: 22px; text-align: center; padding: 20px; }
+  #dropzone.show { display: flex; }
+  #toast { position: fixed; z-index: 31; left: 50%; bottom: max(70px, calc(env(safe-area-inset-bottom) + 60px)); transform: translate(-50%, 10px); max-width: min(90vw, 520px);
+    padding: 8px 14px; border-radius: 12px; background: rgba(20, 24, 30, .85); color: #fff; font-size: 14px; text-align: center; opacity: 0; pointer-events: none; transition: opacity .25s, transform .25s; }
+  #toast.show { opacity: 1; transform: translate(-50%, 0); }
+</style>
+</head>
+<body>
+<canvas id="scene"></canvas>
+<div id="clock"></div>
+<div id="card"></div>
+<div id="boxbar"><button id="boxPrev" aria-label="Previous box">◀</button><div class="boxlabel"><small id="boxNo"></small><b id="boxName"></b></div><button id="boxNext" aria-label="Next box">▶</button></div>
+<button id="pcBtn" aria-label="Boxes">▦</button>
+<button id="build" aria-label="Build">🔨</button>
+<button id="open" aria-label="Settings">⚙︎</button>
+<div id="visitbar"><span id="visitText"></span><button id="goHome">Go home</button></div>
+
+<div id="panel">
+  <div class="sheet">
+    <div class="top"><h2>Pixel Daycare</h2><button id="close">Done</button></div>
+    <p class="hint">Tap a Pokémon on the field to say hi. Tap 🔨 to build your own daycare.</p>
+
+    <h3>Visit friends</h3>
+    <div class="homeonly">
+      <p>Share your house: anyone with the link can visit it in a browser, or paste it into the app. Visitors see a snapshot of your house as it is right now, with your Pokémon living their lives.</p>
+      <form id="shareForm" class="row">
+        <input type="text" id="trainerName" maxlength="16" placeholder="Your trainer name" autocomplete="off">
+        <button class="primary">Share my house</button>
+      </form>
+      <div id="shareResult"></div>
+    </div>
+    <p class="visitonly">You're visiting. Nothing here is saved, and your own house is untouched.</p>
+    <p><button id="visitFriend">Visit a friend…</button> <button id="goHome2" class="visitonly">Go home</button></p>
+
+    <div class="homeonly">
+    <h3>Bring in your Pokémon</h3>
+    <p>Pick a save file (from Files / iCloud, or drop it on the page). Your party and PC boxes show up, and you choose who moves in (up to 100). Works with Gen 1–5 battery saves: <code>.sav</code>, <code>.srm</code>, <code>.dsv</code>. The file is read on this device and never uploaded.</p>
+    <label class="filebtn">Choose save file…<input type="file" id="saveFile"></label>
+
+    <h3>Residents <span id="count" class="hint"></span></h3>
+    <p class="hint">Showing the area you're in. Pokémon wander between areas on their own; use ▦ (the PC) to see where everyone is.</p>
+    <ul id="roster"></ul>
+    <p><button id="clearDemo">Remove demo residents</button></p>
+
+    <h3>Add one by hand</h3>
+    <form id="addForm">
+      <input type="text" id="addName" list="names" placeholder="Species (e.g. Mudkip)" autocomplete="off">
+      <input type="text" id="addNick" placeholder="Nickname (optional)" autocomplete="off">
+      <label><input type="checkbox" id="addShiny"> ★ Shiny</label>
+      <button class="primary">Add</button>
+    </form>
+    <datalist id="names"></datalist>
+    <p id="addMsg" class="warn"></p>
+
+    <h3>Your trainer</h3>
+    <div id="trainerLooks" class="looks"></div>
+    <p class="hint">Trainer sprites: RPG Urban Pack by Kenney (CC0).</p>
+    </div>
+
+    <h3>Time of day</h3>
+    <div class="row">
+      <label><input type="radio" name="tm" id="live"> Follow the real clock</label>
+      <label><input type="radio" name="tm" id="preview"> Preview</label>
+    </div>
+    <div id="previewControls">
+      <input type="range" id="hour" min="0" max="23.99" step="0.05">
+      <label>Speed <select id="speed"><option value="1">1×</option><option value="60">60× (1 hour a minute)</option><option value="600">600×</option></select></label>
+    </div>
+
+    <h3 class="webonly">Always-on tips</h3>
+    <p class="hint webonly">Share → Add to Home Screen for full screen. Settings → Display → Auto-Lock → Never keeps it awake. Settings → Accessibility → Guided Access locks the iPad to this app.</p>
+    <p class="hint">Sprites load from the PMD SpriteCollab community project.</p>
+  </div>
+</div>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
